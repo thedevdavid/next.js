@@ -53,6 +53,7 @@ import {
   HMR_ACTIONS_SENT_TO_BROWSER,
   type HMR_ACTION_TYPES,
 } from './hot-reloader-types'
+import getAssetPathFromRoute from '../../shared/lib/router/utils/get-asset-path-from-route'
 
 export interface InstrumentationDefinition {
   files: string[]
@@ -233,25 +234,17 @@ export async function readPartialManifest<T>(
     | `${typeof NEXT_FONT_MANIFEST}.json`
     | typeof REACT_LOADABLE_MANIFEST,
   pageName: string,
-  type:
-    | 'pages'
-    | 'app'
-    | 'app-route'
-    | 'middleware'
-    | 'instrumentation' = 'pages'
+  type: 'pages' | 'app' | 'middleware' | 'instrumentation' = 'pages'
 ): Promise<T> {
   const manifestPath = posix.join(
     distDir,
     `server`,
-    type === 'app-route' ? 'app' : type,
+    type,
     type === 'middleware' || type === 'instrumentation'
       ? ''
-      : pageName === '/'
-      ? 'index'
-      : pageName === '/index' || pageName.startsWith('/index/')
-      ? `/index${pageName}`
-      : pageName,
-    type === 'app' ? 'page' : type === 'app-route' ? 'route' : '',
+      : type === 'app'
+      ? pageName
+      : getAssetPathFromRoute(pageName),
     name
   )
   return JSON.parse(await readFile(posix.join(manifestPath), 'utf-8')) as T
@@ -271,7 +264,7 @@ export async function loadMiddlewareManifest(
   distDir: string,
   middlewareManifests: MiddlewareManifests,
   pageName: string,
-  type: 'pages' | 'app' | 'app-route' | 'middleware' | 'instrumentation'
+  type: 'pages' | 'app' | 'middleware' | 'instrumentation'
 ): Promise<void> {
   middlewareManifests.set(
     pageName,
@@ -316,12 +309,11 @@ export async function loadPagesManifest(
 async function loadAppPathManifest(
   distDir: string,
   appPathsManifests: AppPathsManifests,
-  pageName: string,
-  type: 'app' | 'app-route' = 'app'
+  pageName: string
 ): Promise<void> {
   appPathsManifests.set(
     pageName,
-    await readPartialManifest(distDir, APP_PATHS_MANIFEST, pageName, type)
+    await readPartialManifest(distDir, APP_PATHS_MANIFEST, pageName, 'app')
   )
 }
 
@@ -987,7 +979,7 @@ export async function handleRouteType({
 
       await loadAppBuildManifest(distDir, appBuildManifests, page)
       await loadBuildManifest(distDir, buildManifests, page, 'app')
-      await loadAppPathManifest(distDir, appPathsManifests, page, 'app')
+      await loadAppPathManifest(distDir, appPathsManifests, page)
       await loadActionManifest(distDir, actionManifests, page)
       await loadFontManifest(distDir, fontManifests, page, 'app')
       await writeManifests({
@@ -1014,14 +1006,9 @@ export async function handleRouteType({
 
       const type = writtenEndpoint?.type
 
-      await loadAppPathManifest(distDir, appPathsManifests, page, 'app-route')
+      await loadAppPathManifest(distDir, appPathsManifests, page)
       if (type === 'edge') {
-        await loadMiddlewareManifest(
-          distDir,
-          middlewareManifests,
-          page,
-          'app-route'
-        )
+        await loadMiddlewareManifest(distDir, middlewareManifests, page, 'app')
       } else {
         middlewareManifests.delete(page)
       }
