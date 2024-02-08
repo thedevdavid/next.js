@@ -73,6 +73,7 @@ napi-derive = "2"
 next-custom-transforms = { workspace = true }
 
 once_cell = { workspace = true }
+regex = "1.5"
 serde = "1"
 serde_json = "1"
 shadow-rs = { workspace = true }
@@ -106,7 +107,7 @@ turbopack-binding = { workspace = true, features = [
 getrandom = { version = "0.2.9", default-features = false, features = ["js"] }
 iana-time-zone = { version = "*", features = ["fallback"] }
 #[todo] turbopack-binding should expose serde serializable features
-swc_core = { workspace = true, features = ["ecma_ast_serde"] }
+swc_core = { workspace = true, features = ["ecma_ast_serde", "ecma_visit_path"] }
 turbopack-binding = { workspace = true, features = [
   "__swc_core_binding_napi",
   "__feature_mdx_rs",
