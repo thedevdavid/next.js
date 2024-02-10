@@ -1,5 +1,4 @@
 import path from '../../../shared/lib/isomorphic/path'
-import * as Log from '../../../build/output/log'
 
 function isStringOrURL(icon: any): icon is string | URL {
   return typeof icon === 'string' || icon instanceof URL
@@ -11,19 +10,20 @@ function createLocalMetadataBase() {
 
 // For deployment url for metadata routes, prefer to use the deployment url if possible
 // as these routes are unique to the deployments url.
-export function getSocialImageFallbackMetadataBase(
-  metadataBase: URL | null
-): URL | null {
+export function getSocialImageFallbackMetadataBase(metadataBase: URL | null): {
+  fallbackMetadataBase: URL
+  isMetadataBaseMissing: boolean
+} {
   const isMetadataBaseMissing = !metadataBase
   const defaultMetadataBase = createLocalMetadataBase()
   const deploymentUrl =
     process.env.VERCEL_URL && new URL(`https://${process.env.VERCEL_URL}`)
 
-  let fallbackMetadata
+  let fallbackMetadataBase
   if (process.env.NODE_ENV === 'development') {
-    fallbackMetadata = defaultMetadataBase
+    fallbackMetadataBase = defaultMetadataBase
   } else {
-    fallbackMetadata =
+    fallbackMetadataBase =
       process.env.NODE_ENV === 'production' &&
       deploymentUrl &&
       process.env.VERCEL_ENV === 'preview'
@@ -31,14 +31,10 @@ export function getSocialImageFallbackMetadataBase(
         : metadataBase || deploymentUrl || defaultMetadataBase
   }
 
-  if (isMetadataBaseMissing) {
-    Log.warnOnce('')
-    Log.warnOnce(
-      `metadata.metadataBase is not set for resolving social open graph or twitter images, using "${fallbackMetadata.origin}". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase`
-    )
+  return {
+    fallbackMetadataBase,
+    isMetadataBaseMissing,
   }
-
-  return fallbackMetadata
 }
 
 function resolveUrl(url: null | undefined, metadataBase: URL | null): null
