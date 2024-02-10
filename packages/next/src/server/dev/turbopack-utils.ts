@@ -947,14 +947,17 @@ export async function handleRouteType({
       break
     }
     case 'app-page': {
-      const writtenEndpoint = await route.htmlEndpoint.writeToDisk()
+      const pageRoute =
+        route.pages.find((p) => p.originalName === page) ?? route.pages[0]
+
+      const writtenEndpoint = await pageRoute.htmlEndpoint.writeToDisk()
       handleRequireCacheClearing?.(page, writtenEndpoint)
 
       changeSubscription?.(
         page,
         'server',
         true,
-        route.rscEndpoint,
+        pageRoute.rscEndpoint,
         (_page, change) => {
           if (change.issues.some((issue) => issue.severity === 'error')) {
             // Ignore any updates that has errors

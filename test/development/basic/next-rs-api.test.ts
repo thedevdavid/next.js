@@ -359,7 +359,7 @@ describe('next.rs api', () => {
           break
         }
         case 'app-page': {
-          const result = await route.htmlEndpoint.writeToDisk()
+          const result = await route.pages[0].htmlEndpoint.writeToDisk()
           expect(result.type).toBe(runtime)
           expect(result.config).toEqual(config)
           expect(normalizeIssues(result.issues)).toMatchSnapshot('issues')
@@ -367,7 +367,7 @@ describe('next.rs api', () => {
             'diagnostics'
           )
 
-          const result2 = await route.rscEndpoint.writeToDisk()
+          const result2 = await route.pages[0].rscEndpoint.writeToDisk()
           expect(result2.type).toBe(runtime)
           expect(result2.config).toEqual(config)
           expect(normalizeIssues(result2.issues)).toMatchSnapshot('rsc issues')
@@ -476,10 +476,9 @@ describe('next.rs api', () => {
             break
           }
           case 'app-page': {
-            await route.htmlEndpoint.writeToDisk()
-            serverSideSubscription = await route.rscEndpoint.serverChanged(
-              false
-            )
+            await route.pages[0].htmlEndpoint.writeToDisk()
+            serverSideSubscription =
+              await route.pages[0].rscEndpoint.serverChanged(false)
             break
           }
           default: {

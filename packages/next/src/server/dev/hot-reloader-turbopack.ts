@@ -17,7 +17,6 @@ import {
   getVersionInfo,
   matchNextPageBundleRequest,
 } from './hot-reloader-webpack'
-import { normalizeAppPath } from '../../shared/lib/router/utils/app-paths'
 import { store as consoleStore } from '../../build/output/store'
 import { BLOCKED_PAGES } from '../../shared/lib/constants'
 import { getOverlayMiddleware } from 'next/dist/compiled/@next/react-dev-overlay/dist/middleware-turbopack'
@@ -30,7 +29,6 @@ import {
   deleteAppClientCache,
   deleteCache,
 } from '../../build/webpack/plugins/nextjs-require-cache-hot-reloader'
-import { normalizeMetadataRoute } from '../../lib/metadata/get-metadata-route'
 import {
   clearModuleContext,
   clearAllModuleContexts,
@@ -70,7 +68,6 @@ import {
   type ServerFields,
   type SetupOpts,
 } from '../lib/router-utils/setup-dev-bundler'
-import getAssetPathFromRoute from '../../shared/lib/router/utils/get-asset-path-from-route'
 import { findPagePathData } from './on-demand-entry-handler'
 import type { RouteDefinition } from '../future/route-definitions/route-definition'
 
@@ -405,7 +402,14 @@ export async function createHotReloaderTurbopack(
             case 'page-api':
               currentEntrypoints.set(pathname, route)
               break
-            case 'app-page':
+            case 'app-page': {
+              currentEntrypoints.set(pathname, route)
+              // ideally we wouldn't put the whole route in here
+              route.pages.forEach((page) => {
+                currentAppEntrypoints.set(page.originalName, route)
+              })
+              break
+            }
             case 'app-route': {
               currentEntrypoints.set(pathname, route)
               currentAppEntrypoints.set(route.originalName, route)
@@ -432,6 +436,12 @@ export async function createHotReloaderTurbopack(
             const subscription = await subscriptionPromise
             await subscription.return?.()
             changeSubscriptions.delete(pathname)
+          }
+        }
+
+        for (const [page] of currentIssues) {
+          if (!currentEntrypoints.has(page)) {
+            currentIssues.delete(page)
           }
         }
 
@@ -990,7 +1000,7 @@ export async function createHotReloaderTurbopack(
         default:
       }
     }
-  })()
+  })().catch(() => {})
 
   return hotReloader
 }
