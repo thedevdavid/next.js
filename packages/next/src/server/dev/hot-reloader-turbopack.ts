@@ -51,7 +51,8 @@ import {
   loadBuildManifest,
   loadPagesManifest,
   loadFontManifest,
-  type CurrentEntrypoints,
+  type PageEntrypoints,
+  type AppEntrypoints,
   type CurrentIssues,
   processIssues,
   msToNs,
@@ -133,10 +134,8 @@ export async function createHotReloaderTurbopack(
   })
   const entrypointsSubscription = project.entrypointsSubscribe()
 
-  // pathname -> route
-  const currentEntrypoints: CurrentEntrypoints = new Map()
-  // originalName / page -> route
-  const currentAppEntrypoints: CurrentEntrypoints = new Map()
+  const currentEntrypoints: PageEntrypoints = new Map()
+  const currentAppEntrypoints: AppEntrypoints = new Map()
 
   const changeSubscriptions: Map<
     string,
@@ -403,15 +402,15 @@ export async function createHotReloaderTurbopack(
               currentEntrypoints.set(pathname, route)
               break
             case 'app-page': {
-              currentEntrypoints.set(pathname, route)
-              // ideally we wouldn't put the whole route in here
               route.pages.forEach((page) => {
-                currentAppEntrypoints.set(page.originalName, route)
+                currentAppEntrypoints.set(page.originalName, {
+                  type: 'app-page',
+                  ...page,
+                })
               })
               break
             }
             case 'app-route': {
-              currentEntrypoints.set(pathname, route)
               currentAppEntrypoints.set(route.originalName, route)
               break
             }
@@ -827,7 +826,7 @@ export async function createHotReloaderTurbopack(
       isApp,
       url: requestUrl,
     }) {
-      if (inputPage !== '/_error' && BLOCKED_PAGES.indexOf(inputPage) !== -1) {
+      if (BLOCKED_PAGES.includes(inputPage) && inputPage !== '/_error') {
         return
       }
 
@@ -902,16 +901,15 @@ export async function createHotReloaderTurbopack(
       }
 
       await currentEntriesHandling
-      const route = definition?.pathname
-        ? currentEntrypoints.get(definition!.pathname)
-        : isApp
+
+      const isInsideAppDir = routeDef.bundlePath.startsWith('app/')
+
+      const route = isInsideAppDir
         ? currentAppEntrypoints.get(page)
         : currentEntrypoints.get(page)
 
       if (!route) {
         // TODO: why is this entry missing in turbopack?
-        if (page === '/_app') return
-        if (page === '/_document') return
         if (page === '/middleware') return
         if (page === '/src/middleware') return
         if (page === '/instrumentation') return

@@ -38,7 +38,6 @@ import type { SetupOpts } from '../lib/router-utils/setup-dev-bundler'
 import { isInterceptionRouteRewrite } from '../../lib/generate-interception-routes-rewrites'
 import type {
   Issue,
-  Route,
   TurbopackResult,
   StyledString,
   Endpoint,
@@ -258,7 +257,34 @@ export type MiddlewareManifests = Map<string, TurbopackMiddlewareManifest>
 export type ActionManifests = Map<string, ActionManifest>
 export type FontManifests = Map<string, NextFontManifest>
 export type LoadableManifests = Map<string, LoadableManifest>
-export type CurrentEntrypoints = Map<string, Route>
+
+export type PageRoute =
+  | {
+      type: 'page'
+      htmlEndpoint: Endpoint
+      dataEndpoint: Endpoint
+    }
+  | {
+      type: 'page-api'
+      endpoint: Endpoint
+    }
+
+export type AppRoute =
+  | {
+      type: 'app-page'
+      htmlEndpoint: Endpoint
+      rscEndpoint: Endpoint
+    }
+  | {
+      type: 'app-route'
+      endpoint: Endpoint
+    }
+
+// pathname -> route
+export type PageEntrypoints = Map<string, PageRoute>
+
+// originalName / page -> route
+export type AppEntrypoints = Map<string, AppRoute>
 
 export async function loadMiddlewareManifest(
   distDir: string,
@@ -365,7 +391,7 @@ async function loadLoadableManifest(
 async function writeBuildManifest(
   distDir: string,
   buildManifests: BuildManifests,
-  currentEntrypoints: CurrentEntrypoints,
+  currentEntrypoints: PageEntrypoints,
   rewrites: SetupOpts['fsChecker']['rewrites']
 ): Promise<void> {
   const buildManifest = mergeBuildManifests(buildManifests.values())
@@ -593,7 +619,7 @@ export async function writeManifests({
   actionManifests: ActionManifests
   fontManifests: FontManifests
   loadableManifests: LoadableManifests
-  currentEntrypoints: CurrentEntrypoints
+  currentEntrypoints: PageEntrypoints
 }): Promise<void> {
   await writeBuildManifest(
     distDir,
@@ -814,12 +840,12 @@ export async function handleRouteType({
   actionManifests: ActionManifests
   fontManifests: FontManifests
   loadableManifests: LoadableManifests
-  currentEntrypoints: CurrentEntrypoints
+  currentEntrypoints: PageEntrypoints
   handleRequireCacheClearing: HandleRequireCacheClearing | undefined
   changeSubscription: ChangeSubscription | undefined
   readyIds: ReadyIds
   page: string
-  route: Route
+  route: PageRoute | AppRoute
 }) {
   switch (route.type) {
     case 'page': {
@@ -947,17 +973,14 @@ export async function handleRouteType({
       break
     }
     case 'app-page': {
-      const pageRoute =
-        route.pages.find((p) => p.originalName === page) ?? route.pages[0]
-
-      const writtenEndpoint = await pageRoute.htmlEndpoint.writeToDisk()
+      const writtenEndpoint = await route.htmlEndpoint.writeToDisk()
       handleRequireCacheClearing?.(page, writtenEndpoint)
 
       changeSubscription?.(
         page,
         'server',
         true,
-        pageRoute.rscEndpoint,
+        route.rscEndpoint,
         (_page, change) => {
           if (change.issues.some((issue) => issue.severity === 'error')) {
             // Ignore any updates that has errors
