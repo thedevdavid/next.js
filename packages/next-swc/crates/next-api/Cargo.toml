@@ -12,6 +12,10 @@ bench = false
 [lints]
 workspace = true
 
+[features]
+# `cargo doc` only features, to allow to build documentation for the individual pkg
+__doc__features = ["next-core/rustls-tls"]
+
 [dependencies]
 anyhow = { workspace = true, features = ["backtrace"] }
 futures = { workspace = true }
