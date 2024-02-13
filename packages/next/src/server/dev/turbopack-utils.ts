@@ -249,14 +249,53 @@ export async function readPartialManifest<T>(
   return JSON.parse(await readFile(posix.join(manifestPath), 'utf-8')) as T
 }
 
-export type BuildManifests = Map<string, BuildManifest>
-export type AppBuildManifests = Map<string, AppBuildManifest>
-export type PagesManifests = Map<string, PagesManifest>
-export type AppPathsManifests = Map<string, PagesManifest>
-export type MiddlewareManifests = Map<string, TurbopackMiddlewareManifest>
-export type ActionManifests = Map<string, ActionManifest>
-export type FontManifests = Map<string, NextFontManifest>
-export type LoadableManifests = Map<string, LoadableManifest>
+/**
+ * `app` -> app dir
+ * `pages` -> pages dir
+ * `root` -> middleware / instrumentation
+ * `assets` -> assets
+ */
+export type EntryKeyType = 'app' | 'pages' | 'root' | 'assets'
+export type EntryKeySide = 'client' | 'server'
+
+export type EntryKey = `${EntryKeyType}@${EntryKeySide}@${string}`
+
+/**
+ * Get a key that's unique across all entrypoints.
+ */
+export function getEntryKey<
+  Type extends EntryKeyType,
+  Side extends EntryKeySide,
+  Page extends string
+>(type: Type, side: Side, page: Page): `${Type}@${Side}@${Page}` {
+  return `${type}@${side}@${page}` satisfies EntryKey
+}
+
+export function splitEntryKey<
+  Type extends EntryKeyType = EntryKeyType,
+  Side extends EntryKeySide = EntryKeySide,
+  Page extends string = string
+>(key: `${Type}@${Side}@${Page}`): [Type, Side, Page] {
+  // export function splitEntryKey(
+  //   key: EntryKey
+  // ): [EntryKeyType, EntryKeySide, string] {
+  const split = key.split('@')
+
+  if (split.length !== 3) {
+    throw new Error(`invalid entry key: ${key}`)
+  }
+
+  return [split[0] as Type, split[1] as Side, split[2] as Page]
+}
+
+export type BuildManifests = Map<EntryKey, BuildManifest>
+export type AppBuildManifests = Map<EntryKey, AppBuildManifest>
+export type PagesManifests = Map<EntryKey, PagesManifest>
+export type AppPathsManifests = Map<EntryKey, PagesManifest>
+export type MiddlewareManifests = Map<EntryKey, TurbopackMiddlewareManifest>
+export type ActionManifests = Map<EntryKey, ActionManifest>
+export type FontManifests = Map<EntryKey, NextFontManifest>
+export type LoadableManifests = Map<EntryKey, LoadableManifest>
 
 export type PageRoute =
   | {
@@ -293,7 +332,11 @@ export async function loadMiddlewareManifest(
   type: 'pages' | 'app' | 'middleware' | 'instrumentation'
 ): Promise<void> {
   middlewareManifests.set(
-    pageName,
+    getEntryKey(
+      type === 'middleware' || type === 'instrumentation' ? 'root' : type,
+      'server',
+      pageName
+    ),
     await readPartialManifest(distDir, MIDDLEWARE_MANIFEST, pageName, type)
   )
 }
@@ -305,7 +348,7 @@ export async function loadBuildManifest(
   type: 'app' | 'pages' = 'pages'
 ): Promise<void> {
   buildManifests.set(
-    pageName,
+    getEntryKey(type, 'server', pageName),
     await readPartialManifest(distDir, BUILD_MANIFEST, pageName, type)
   )
 }
@@ -316,7 +359,7 @@ async function loadAppBuildManifest(
   pageName: string
 ): Promise<void> {
   appBuildManifests.set(
-    pageName,
+    getEntryKey('app', 'server', pageName),
     await readPartialManifest(distDir, APP_BUILD_MANIFEST, pageName, 'app')
   )
 }
@@ -327,7 +370,7 @@ export async function loadPagesManifest(
   pageName: string
 ): Promise<void> {
   pagesManifests.set(
-    pageName,
+    getEntryKey('pages', 'server', pageName),
     await readPartialManifest(distDir, PAGES_MANIFEST, pageName)
   )
 }
@@ -338,7 +381,7 @@ async function loadAppPathManifest(
   pageName: string
 ): Promise<void> {
   appPathsManifests.set(
-    pageName,
+    getEntryKey('app', 'server', pageName),
     await readPartialManifest(distDir, APP_PATHS_MANIFEST, pageName, 'app')
   )
 }
@@ -349,7 +392,7 @@ async function loadActionManifest(
   pageName: string
 ): Promise<void> {
   actionManifests.set(
-    pageName,
+    getEntryKey('app', 'server', pageName),
     await readPartialManifest(
       distDir,
       `${SERVER_REFERENCE_MANIFEST}.json`,
@@ -366,7 +409,7 @@ export async function loadFontManifest(
   type: 'app' | 'pages' = 'pages'
 ): Promise<void> {
   fontManifests.set(
-    pageName,
+    getEntryKey(type, 'server', pageName),
     await readPartialManifest(
       distDir,
       `${NEXT_FONT_MANIFEST}.json`,
@@ -383,7 +426,7 @@ async function loadLoadableManifest(
   type: 'app' | 'pages' = 'pages'
 ): Promise<void> {
   loadableManifests.set(
-    pageName,
+    getEntryKey(type, 'server', pageName),
     await readPartialManifest(distDir, REACT_LOADABLE_MANIFEST, pageName, type)
   )
 }
@@ -459,9 +502,10 @@ async function writeFallbackBuildManifest(
   buildManifests: BuildManifests
 ): Promise<void> {
   const fallbackBuildManifest = mergeBuildManifests(
-    [buildManifests.get('_app'), buildManifests.get('_error')].filter(
-      Boolean
-    ) as BuildManifest[]
+    [
+      buildManifests.get(getEntryKey('pages', 'server', '_app')),
+      buildManifests.get(getEntryKey('pages', 'server', '_error')),
+    ].filter(Boolean) as BuildManifest[]
   )
   const fallbackBuildManifestPath = join(distDir, `fallback-${BUILD_MANIFEST}`)
   deleteCache(fallbackBuildManifestPath)
@@ -639,7 +683,7 @@ export async function writeManifests({
 
 class ModuleBuildError extends Error {}
 
-function issueKey(issue: Issue): string {
+function getIssueKey(issue: Issue): string {
   return [
     issue.severity,
     issue.filePath,
@@ -722,24 +766,24 @@ export function formatIssue(issue: Issue) {
   return message
 }
 
-export type CurrentIssues = Map<string, Map<string, Issue>>
+export type CurrentIssues = Map<EntryKey, Map<string, Issue>>
 
 export function processIssues(
   currentIssues: CurrentIssues,
-  name: string,
+  key: EntryKey,
   result: TurbopackResult,
   throwIssue = false
 ) {
   const newIssues = new Map<string, Issue>()
-  currentIssues.set(name, newIssues)
+  currentIssues.set(key, newIssues)
 
   const relevantIssues = new Set()
 
   for (const issue of result.issues) {
     if (issue.severity !== 'error' && issue.severity !== 'fatal') continue
-    const key = issueKey(issue)
+    const issueKey = getIssueKey(issue)
     const formatted = formatIssue(issue)
-    newIssues.set(key, issue)
+    newIssues.set(issueKey, issue)
 
     // We show errors in node_modules to the console, but don't throw for them
     if (/(^|\/)node_modules(\/|$)/.test(issue.filePath)) continue
@@ -791,17 +835,15 @@ export interface GlobalEntrypoints {
 }
 
 export type HandleRequireCacheClearing = (
-  id: string,
+  key: EntryKey,
   result: TurbopackResult<WrittenEndpoint>
 ) => void
 
 export type ChangeSubscription = (
-  page: string,
-  type: 'client' | 'server',
+  key: EntryKey,
   includeIssues: boolean,
   endpoint: Endpoint | undefined,
   makePayload: (
-    page: string,
     change: TurbopackResult
   ) => Promise<HMR_ACTION_TYPES> | HMR_ACTION_TYPES | void
 ) => Promise<void>
@@ -826,6 +868,7 @@ export async function handleRouteType({
   changeSubscription,
   readyIds,
   page,
+  pathname,
   route,
 }: {
   rewrites: SetupOpts['fsChecker']['rewrites']
@@ -845,28 +888,36 @@ export async function handleRouteType({
   changeSubscription: ChangeSubscription | undefined
   readyIds: ReadyIds
   page: string
+  pathname: string
   route: PageRoute | AppRoute
 }) {
   switch (route.type) {
     case 'page': {
+      const clientKey = getEntryKey('pages', 'client', page)
+      const serverKey = getEntryKey('pages', 'server', page)
+
       try {
         if (globalEntrypoints.app) {
+          const key = getEntryKey('pages', 'server', '_app')
+
           const writtenEndpoint = await globalEntrypoints.app.writeToDisk()
-          handleRequireCacheClearing?.('_app', writtenEndpoint)
-          processIssues(currentIssues, '_app', writtenEndpoint)
+          handleRequireCacheClearing?.(key, writtenEndpoint)
+          processIssues(currentIssues, key, writtenEndpoint)
         }
         await loadBuildManifest(distDir, buildManifests, '_app')
         await loadPagesManifest(distDir, pagesManifests, '_app')
 
         if (globalEntrypoints.document) {
+          const key = getEntryKey('pages', 'server', '_document')
+
           const writtenEndpoint = await globalEntrypoints.document.writeToDisk()
-          handleRequireCacheClearing?.('_document', writtenEndpoint)
-          processIssues(currentIssues, '_document', writtenEndpoint)
+          handleRequireCacheClearing?.(key, writtenEndpoint)
+          processIssues(currentIssues, key, writtenEndpoint)
         }
         await loadPagesManifest(distDir, pagesManifests, '_document')
 
         const writtenEndpoint = await route.htmlEndpoint.writeToDisk()
-        handleRequireCacheClearing?.(page, writtenEndpoint)
+        handleRequireCacheClearing?.(serverKey, writtenEndpoint)
 
         const type = writtenEndpoint?.type
 
@@ -880,7 +931,7 @@ export async function handleRouteType({
             'pages'
           )
         } else {
-          middlewareManifests.delete(page)
+          middlewareManifests.delete(serverKey)
         }
         await loadFontManifest(distDir, fontManifests, page, 'pages')
         await loadLoadableManifest(distDir, loadableManifests, page, 'pages')
@@ -899,31 +950,24 @@ export async function handleRouteType({
           currentEntrypoints,
         })
 
-        processIssues(currentIssues, page, writtenEndpoint)
+        processIssues(currentIssues, serverKey, writtenEndpoint)
       } finally {
-        changeSubscription?.(
-          page,
-          'server',
-          false,
-          route.dataEndpoint,
-          (pageName) => {
-            // Report the next compilation again
-            readyIds.delete(page)
-            return {
-              event: HMR_ACTIONS_SENT_TO_BROWSER.SERVER_ONLY_CHANGES,
-              pages: [pageName],
-            }
+        changeSubscription?.(serverKey, false, route.dataEndpoint, () => {
+          // Report the next compilation again
+          readyIds.delete(pathname)
+          return {
+            event: HMR_ACTIONS_SENT_TO_BROWSER.SERVER_ONLY_CHANGES,
+            pages: [page],
           }
-        )
-        changeSubscription?.(page, 'client', false, route.htmlEndpoint, () => {
+        })
+        changeSubscription?.(clientKey, false, route.htmlEndpoint, () => {
           return {
             event: HMR_ACTIONS_SENT_TO_BROWSER.CLIENT_CHANGES,
           }
         })
         if (globalEntrypoints.document) {
           changeSubscription?.(
-            '_document',
-            'server',
+            getEntryKey('pages', 'server', '_document'),
             false,
             globalEntrypoints.document,
             () => {
@@ -936,8 +980,10 @@ export async function handleRouteType({
       break
     }
     case 'page-api': {
+      const key = getEntryKey('pages', 'server', page)
+
       const writtenEndpoint = await route.endpoint.writeToDisk()
-      handleRequireCacheClearing?.(page, writtenEndpoint)
+      handleRequireCacheClearing?.(key, writtenEndpoint)
 
       const type = writtenEndpoint?.type
 
@@ -950,7 +996,7 @@ export async function handleRouteType({
           'pages'
         )
       } else {
-        middlewareManifests.delete(page)
+        middlewareManifests.delete(key)
       }
       await loadLoadableManifest(distDir, loadableManifests, page, 'pages')
 
@@ -968,39 +1014,35 @@ export async function handleRouteType({
         currentEntrypoints,
       })
 
-      processIssues(currentIssues, page, writtenEndpoint)
+      processIssues(currentIssues, key, writtenEndpoint)
 
       break
     }
     case 'app-page': {
-      const writtenEndpoint = await route.htmlEndpoint.writeToDisk()
-      handleRequireCacheClearing?.(page, writtenEndpoint)
+      const key = getEntryKey('app', 'server', page)
 
-      changeSubscription?.(
-        page,
-        'server',
-        true,
-        route.rscEndpoint,
-        (_page, change) => {
-          if (change.issues.some((issue) => issue.severity === 'error')) {
-            // Ignore any updates that has errors
-            // There will be another update without errors eventually
-            return
-          }
-          // Report the next compilation again
-          readyIds.delete(page)
-          return {
-            action: HMR_ACTIONS_SENT_TO_BROWSER.SERVER_COMPONENT_CHANGES,
-          }
+      const writtenEndpoint = await route.htmlEndpoint.writeToDisk()
+      handleRequireCacheClearing?.(key, writtenEndpoint)
+
+      changeSubscription?.(key, true, route.rscEndpoint, (change) => {
+        if (change.issues.some((issue) => issue.severity === 'error')) {
+          // Ignore any updates that has errors
+          // There will be another update without errors eventually
+          return
         }
-      )
+        // Report the next compilation again
+        readyIds.delete(pathname)
+        return {
+          action: HMR_ACTIONS_SENT_TO_BROWSER.SERVER_COMPONENT_CHANGES,
+        }
+      })
 
       const type = writtenEndpoint?.type
 
       if (type === 'edge') {
         await loadMiddlewareManifest(distDir, middlewareManifests, page, 'app')
       } else {
-        middlewareManifests.delete(page)
+        middlewareManifests.delete(key)
       }
 
       await loadAppBuildManifest(distDir, appBuildManifests, page)
@@ -1022,13 +1064,15 @@ export async function handleRouteType({
         currentEntrypoints,
       })
 
-      processIssues(currentIssues, page, writtenEndpoint, true)
+      processIssues(currentIssues, key, writtenEndpoint, true)
 
       break
     }
     case 'app-route': {
+      const key = getEntryKey('app', 'server', page)
+
       const writtenEndpoint = await route.endpoint.writeToDisk()
-      handleRequireCacheClearing?.(page, writtenEndpoint)
+      handleRequireCacheClearing?.(key, writtenEndpoint)
 
       const type = writtenEndpoint?.type
 
@@ -1036,7 +1080,7 @@ export async function handleRouteType({
       if (type === 'edge') {
         await loadMiddlewareManifest(distDir, middlewareManifests, page, 'app')
       } else {
-        middlewareManifests.delete(page)
+        middlewareManifests.delete(key)
       }
 
       await writeManifests({
@@ -1052,7 +1096,7 @@ export async function handleRouteType({
         loadableManifests,
         currentEntrypoints,
       })
-      processIssues(currentIssues, page, writtenEndpoint, true)
+      processIssues(currentIssues, key, writtenEndpoint, true)
 
       break
     }
